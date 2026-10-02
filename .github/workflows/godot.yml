@@ -1,0 +1,24 @@
+name: Godot Validation
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    container: barichello/godot-ci:4.7.2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Import project
+        run: godot --headless --path . --editor --quit
+      - name: Run headless smoke test
+        run: timeout 20s godot --headless --path . --quit-after 3
+      - name: Scan for parser/runtime errors
+        run: |
+          set -o pipefail
+          godot --headless --path . --editor --quit 2>&1 | tee godot-check.log
+          ! grep -E "SCRIPT ERROR|Parse Error|ERROR:" godot-check.log

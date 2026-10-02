@@ -279,10 +279,10 @@ func _resolve_cascades() -> void:
 		for group in matches:
 			for cell in group.cells:
 				clear[cell] = true
-			var len := group.cells.size()
-			if len >= 5:
+			var match_len: int = group["cells"].size()
+			if match_len >= 5:
 				special_to_create[group.cells[2]] = 4
-			elif len == 4:
+			elif match_len == 4:
 				special_to_create[group.cells[1]] = 1 if group.horizontal else 2
 			elif group.intersection.x >= 0:
 				special_to_create[group.intersection] = 3
@@ -380,7 +380,7 @@ func _process_objectives_before_clear(cells: Array) -> void:
 		if k == target_color:
 			collected += 1
 		for d in [Vector2i(1,0),Vector2i(-1,0),Vector2i(0,1),Vector2i(0,-1)]:
-			var n := cell + d
+			var n: Vector2i = cell + d
 			if _inside(n) and bool(board[n.y][n.x].blocker):
 				board[n.y][n.x].blocker = false
 				board[n.y][n.x].kind = -1

@@ -18,6 +18,35 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends fontconfig
           fc-cache -f
+      - name: Install Android export dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends openjdk-17-jdk unzip ca-certificates
+          java -version
+      - name: Install Godot Android export templates
+        run: |
+          mkdir -p "$HOME/.local/share/godot/export_templates/4.7.2.stable"
+          if [ ! -f "$HOME/.local/share/godot/export_templates/4.7.2.stable/android_debug.apk" ]; then
+            curl -fL --retry 4 --retry-delay 2 "https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz" -o /tmp/godot-export-templates.tpz
+            unzip -q /tmp/godot-export-templates.tpz -d /tmp/godot-export-templates
+            cp -a /tmp/godot-export-templates/templates/. "$HOME/.local/share/godot/export_templates/4.7.2.stable/"
+          fi
+          test -s "$HOME/.local/share/godot/export_templates/4.7.2.stable/android_debug.apk"
+          test -s "$HOME/.local/share/godot/export_templates/4.7.2.stable/android_release.apk"
+      - name: Configure Godot Android SDK and Java SDK
+        run: |
+          mkdir -p "$HOME/.config/godot"
+          cat > "$HOME/.config/godot/editor_settings-4.tres" <<EOF
+          [gd_resource type="EditorSettings" format=3]
+          [resource]
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/java_sdk_path = "$JAVA_HOME"
+          export/android/debug_keystore = "$HOME/.android/debug.keystore"
+          export/android/debug_keystore_user = "androiddebugkey"
+          export/android/debug_keystore_pass = "android"
+          export/android/force_system_user = false
+          EOF
+          cat "$HOME/.config/godot/editor_settings-4.tres"
       - name: Import project
         run: godot --headless --path . --editor --quit
       - name: Run headless smoke test

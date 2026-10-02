@@ -21,8 +21,9 @@ jobs:
       - name: Install Android export dependencies
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends openjdk-17-jdk unzip ca-certificates
+          apt-get install -y --no-install-recommends openjdk-17-jdk unzip ca-certificates curl
           java -version
+          curl --version
       - name: Install Godot Android export templates
         run: |
           mkdir -p "$HOME/.local/share/godot/export_templates/4.7.2.stable"

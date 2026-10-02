@@ -67,7 +67,7 @@ jobs:
           godot --headless --path . --export-debug "Android" build/CandyCrash.apk
           test -s build/CandyCrash.apk
       - name: Upload Android APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: candy-crash-android
           path: build/CandyCrash.apk
@@ -75,7 +75,16 @@ jobs:
       - name: Scan for parser/runtime errors
         run: |
           godot --headless --path . --editor --quit > godot-check.log 2>&1 || true
-          if grep -E "SCRIPT ERROR|Parse Error|ERROR:|WARNING:|deprecated" godot-check.log; then
-            cat godot-check.log
-            exit 1
-          fi
+          python3 - <<'PY'
+          import re
+          p = "godot-check.log"
+          lines = open(p, encoding="utf-8", errors="replace").read().splitlines()
+          bad = []
+          for line in lines:
+              if re.search(r"\b(SCRIPT ERROR|Parse Error|ERROR:|WARNING:|deprecated)\b", line, re.I):
+                  bad.append(line)
+          if bad:
+              for line in bad:
+                  print(line)
+              raise SystemExit(1)
+          PY

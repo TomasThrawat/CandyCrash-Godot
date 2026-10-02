@@ -22,6 +22,20 @@ func _ready() -> void:
 			music.stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
 		music.play()
 
+func _exit_tree() -> void:
+	# Stop playback and release stream references before Godot's final Resource/ObjectDB cleanup.
+	if music and is_instance_valid(music):
+		music.stop()
+		music.stream = null
+	for role in players:
+		var p: AudioStreamPlayer = players[role]
+		if is_instance_valid(p):
+			p.stop()
+			p.stream = null
+	players.clear()
+	streams.clear()
+	music = null
+
 func load_streams() -> void:
 	var roles := {
 		"match":"res://assets/audio/match.wav",

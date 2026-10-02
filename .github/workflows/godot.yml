@@ -22,6 +22,17 @@ jobs:
         run: godot --headless --path . --editor --quit
       - name: Run headless smoke test
         run: godot --headless --path . --quit-after 3 > smoke.log 2>&1
+      - name: Export Android APK
+        run: |
+          mkdir -p build
+          godot --headless --path . --export-debug "Android" build/CandyCrash.apk
+          test -s build/CandyCrash.apk
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: candy-crash-android
+          path: build/CandyCrash.apk
+          if-no-files-found: error
       - name: Scan for parser/runtime errors
         run: |
           godot --headless --path . --editor --quit > godot-check.log 2>&1 || true

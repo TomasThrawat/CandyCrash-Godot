@@ -13,11 +13,13 @@ jobs:
     container: barichello/godot-ci:4.7.2
     steps:
       - uses: actions/checkout@v5
+
       - name: Install fontconfig for headless font support
         run: |
           apt-get update
           apt-get install -y --no-install-recommends fontconfig
           fc-cache -f
+
       - name: Install Android export dependencies
         run: |
           apt-get update
@@ -27,14 +29,25 @@ jobs:
           test -x "$JAVA_HOME/bin/java"
           "$JAVA_HOME/bin/java" -version
           curl --version
-      - name: Install Android SDK packages required by Godot 4.7
+
+      - name: Clean and install Android SDK packages required by Godot 4.7
         run: |
           export ANDROID_HOME=/usr/lib/android-sdk
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
           export PATH="$ANDROID_HOME/cmdline-tools/cmdline-tools/bin:$ANDROID_HOME/platform-tools:$PATH"
+
+          rm -rf "$ANDROID_HOME/platform-tools-2"
+          rm -rf "$ANDROID_HOME/build-tools/33.0.2"
+
           sdkmanager --sdk_root="$ANDROID_HOME" "platform-tools" "build-tools;35.0.1" "platforms;android-35"
+
           test -x "$ANDROID_HOME/platform-tools/adb"
           test -d "$ANDROID_HOME/build-tools/35.0.1"
-          test -d "$ANDROID_HOME/platforms/android-35"
+          test -s "$ANDROID_HOME/build-tools/35.0.1/apksigner"
+          test -s "$ANDROID_HOME/platforms/android-35/android.jar"
+          test ! -e "$ANDROID_HOME/platform-tools-2"
+          test ! -e "$ANDROID_HOME/build-tools/33.0.2"
+
       - name: Install Godot Android export templates
         run: |
           mkdir -p "$HOME/.local/share/godot/export_templates/4.7.2.stable"
@@ -45,6 +58,7 @@ jobs:
           fi
           test -s "$HOME/.local/share/godot/export_templates/4.7.2.stable/android_debug.apk"
           test -s "$HOME/.local/share/godot/export_templates/4.7.2.stable/android_release.apk"
+
       - name: Configure Godot Android SDK and Java SDK
         run: |
           mkdir -p "$HOME/.config/godot"
@@ -59,11 +73,23 @@ jobs:
           export/android/force_system_user = false
           EOF
           cat "$HOME/.config/godot/editor_settings-4.7.tres"
-          adb start-server
+
       - name: Import project
         run: godot --headless --path . --editor --quit
+
       - name: Run headless smoke test
-        run: godot --headless --path . --quit-after 3 > smoke.log 2>&1
+        run: |
+          set +e
+          godot --headless --path . --quit-after 3 > smoke.log 2>&1
+          status=$?
+          cat smoke.log
+          if [ "$status" -ne 0 ]; then
+            exit "$status"
+          fi
+          if grep -E "SCRIPT ERROR|Parse Error|ERROR:|WARNING:|deprecated" smoke.log >/dev/null 2>&1; then
+            exit 1
+          fi
+
       - name: Verify Android export environment
         run: |
           test -s "$HOME/.local/share/godot/export_templates/4.7.2.stable/android_debug.apk"
@@ -71,22 +97,31 @@ jobs:
           test -x "/usr/lib/jvm/java-17-openjdk-amd64/bin/java"
           test -x "/usr/lib/android-sdk/platform-tools/adb"
           test -d "/usr/lib/android-sdk/build-tools/35.0.1"
+          test -s "/usr/lib/android-sdk/build-tools/35.0.1/apksigner"
           test -d "/usr/lib/android-sdk/platforms/android-35"
+
       - name: Export Android APK
         run: |
           mkdir -p build
           godot --headless --path . --export-debug "Android" build/CandyCrash.apk
           test -s build/CandyCrash.apk
+
       - name: Upload Android APK
         uses: actions/upload-artifact@v7
         with:
           name: candy-crash-android
           path: build/CandyCrash.apk
           if-no-files-found: error
+
       - name: Scan for parser/runtime errors
         run: |
-          godot --headless --path . --editor --quit > godot-check.log 2>&1 || true
+          set +e
+          godot --headless --path . --editor --quit > godot-check.log 2>&1
+          status=$?
+          cat godot-check.log
+          if [ "$status" -ne 0 ]; then
+            exit "$status"
+          fi
           if grep -E "SCRIPT ERROR|Parse Error|ERROR:|WARNING:|deprecated" godot-check.log >/dev/null 2>&1; then
-            cat godot-check.log
             exit 1
           fi

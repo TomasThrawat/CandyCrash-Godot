@@ -22,7 +22,10 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends openjdk-17-jdk unzip ca-certificates curl
-          java -version
+          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+          echo "JAVA_HOME=$JAVA_HOME"
+          test -x "$JAVA_HOME/bin/java"
+          "$JAVA_HOME/bin/java" -version
           curl --version
       - name: Install Godot Android export templates
         run: |
@@ -37,21 +40,27 @@ jobs:
       - name: Configure Godot Android SDK and Java SDK
         run: |
           mkdir -p "$HOME/.config/godot"
-          cat > "$HOME/.config/godot/editor_settings-4.tres" <<EOF
+          cat > "$HOME/.config/godot/editor_settings-4.7.tres" <<EOF
           [gd_resource type="EditorSettings" format=3]
           [resource]
-          export/android/android_sdk_path = "$ANDROID_HOME"
-          export/android/java_sdk_path = "$JAVA_HOME"
+          export/android/android_sdk_path = "/usr/lib/android-sdk"
+          export/android/java_sdk_path = "/usr/lib/jvm/java-17-openjdk-amd64"
           export/android/debug_keystore = "$HOME/.android/debug.keystore"
           export/android/debug_keystore_user = "androiddebugkey"
           export/android/debug_keystore_pass = "android"
           export/android/force_system_user = false
           EOF
-          cat "$HOME/.config/godot/editor_settings-4.tres"
+          cat "$HOME/.config/godot/editor_settings-4.7.tres"
       - name: Import project
         run: godot --headless --path . --editor --quit
       - name: Run headless smoke test
         run: godot --headless --path . --quit-after 3 > smoke.log 2>&1
+      - name: Verify Android export environment
+        run: |
+          test -s "$HOME/.local/share/godot/export_templates/4.7.2.stable/android_debug.apk"
+          test -s "$HOME/.local/share/godot/export_templates/4.7.2.stable/android_release.apk"
+          test -x "/usr/lib/jvm/java-17-openjdk-amd64/bin/java"
+          test -x "/usr/lib/android-sdk/platform-tools/adb"
       - name: Export Android APK
         run: |
           mkdir -p build

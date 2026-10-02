@@ -18,6 +18,8 @@ func _ready() -> void:
 	load_streams()
 	if ResourceLoader.exists("res://assets/audio/music.wav"):
 		music.stream = load("res://assets/audio/music.wav")
+		if music.stream is AudioStreamWAV:
+			music.stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
 		music.play()
 
 func load_streams() -> void:

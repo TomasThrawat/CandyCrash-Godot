@@ -118,6 +118,9 @@ func _start_level(id: int) -> void:
 
 func _show_game() -> void:
 	screen = "game"
+	if board and is_instance_valid(board):
+		board.queue_free()
+		board = null
 	_clear_ui()
 	var level := LevelData.get_level(current_level)
 	board = GameBoard.new()

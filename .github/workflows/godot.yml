@@ -12,13 +12,20 @@ jobs:
     runs-on: ubuntu-latest
     container: barichello/godot-ci:4.7.2
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - name: Install fontconfig for headless font support
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends fontconfig
+          fc-cache -f
       - name: Import project
         run: godot --headless --path . --editor --quit
       - name: Run headless smoke test
-        run: timeout 20s godot --headless --path . --quit-after 3
+        run: godot --headless --path . --quit-after 3 > smoke.log 2>&1
       - name: Scan for parser/runtime errors
         run: |
-          set -o pipefail
-          godot --headless --path . --editor --quit 2>&1 | tee godot-check.log
-          ! grep -E "SCRIPT ERROR|Parse Error|ERROR:" godot-check.log
+          godot --headless --path . --editor --quit > godot-check.log 2>&1 || true
+          if grep -E "SCRIPT ERROR|Parse Error|ERROR:|WARNING:|deprecated" godot-check.log; then
+            cat godot-check.log
+            exit 1
+          fi

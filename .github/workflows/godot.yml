@@ -42,16 +42,15 @@ jobs:
           rm -rf "$ANDROID_HOME/build-tools/35.0.0"
           rm -rf "$ANDROID_HOME/build-tools/35.0.1"
 
-          sdkmanager --sdk_root="$ANDROID_HOME" "platform-tools" "build-tools;35.0.0" "build-tools;35.0.1" "platforms;android-35"
+          sdkmanager --sdk_root="$ANDROID_HOME" "platform-tools" "build-tools;35.0.1" "platforms;android-35"
 
           test -x "$ANDROID_HOME/platform-tools/adb"
-          test -d "$ANDROID_HOME/build-tools/35.0.0"
-          test -s "$ANDROID_HOME/build-tools/35.0.0/apksigner"
           test -d "$ANDROID_HOME/build-tools/35.0.1"
           test -s "$ANDROID_HOME/build-tools/35.0.1/apksigner"
           test -s "$ANDROID_HOME/platforms/android-35/android.jar"
           test ! -e "$ANDROID_HOME/platform-tools-2"
           test ! -e "$ANDROID_HOME/build-tools/33.0.2"
+          test ! -e "$ANDROID_HOME/build-tools/35.0.0"
 
       - name: Install Godot Android export templates
         run: |
@@ -101,8 +100,6 @@ jobs:
           test -s "$HOME/.local/share/godot/export_templates/4.7.2.stable/android_release.apk"
           test -x "/usr/lib/jvm/java-17-openjdk-amd64/bin/java"
           test -x "/usr/lib/android-sdk/platform-tools/adb"
-          test -d "/usr/lib/android-sdk/build-tools/35.0.0"
-          test -s "/usr/lib/android-sdk/build-tools/35.0.0/apksigner"
           test -d "/usr/lib/android-sdk/build-tools/35.0.1"
           test -s "/usr/lib/android-sdk/build-tools/35.0.1/apksigner"
           test -d "/usr/lib/android-sdk/platforms/android-35"

@@ -27,6 +27,14 @@ jobs:
           test -x "$JAVA_HOME/bin/java"
           "$JAVA_HOME/bin/java" -version
           curl --version
+      - name: Install Android SDK packages required by Godot 4.7
+        run: |
+          export ANDROID_HOME=/usr/lib/android-sdk
+          export PATH="$ANDROID_HOME/cmdline-tools/cmdline-tools/bin:$ANDROID_HOME/platform-tools:$PATH"
+          sdkmanager --sdk_root="$ANDROID_HOME" "platform-tools" "build-tools;35.0.1" "platforms;android-35"
+          test -x "$ANDROID_HOME/platform-tools/adb"
+          test -d "$ANDROID_HOME/build-tools/35.0.1"
+          test -d "$ANDROID_HOME/platforms/android-35"
       - name: Install Godot Android export templates
         run: |
           mkdir -p "$HOME/.local/share/godot/export_templates/4.7.2.stable"
@@ -51,6 +59,7 @@ jobs:
           export/android/force_system_user = false
           EOF
           cat "$HOME/.config/godot/editor_settings-4.7.tres"
+          adb start-server
       - name: Import project
         run: godot --headless --path . --editor --quit
       - name: Run headless smoke test
@@ -61,6 +70,8 @@ jobs:
           test -s "$HOME/.local/share/godot/export_templates/4.7.2.stable/android_release.apk"
           test -x "/usr/lib/jvm/java-17-openjdk-amd64/bin/java"
           test -x "/usr/lib/android-sdk/platform-tools/adb"
+          test -d "/usr/lib/android-sdk/build-tools/35.0.1"
+          test -d "/usr/lib/android-sdk/platforms/android-35"
       - name: Export Android APK
         run: |
           mkdir -p build

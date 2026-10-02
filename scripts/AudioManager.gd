@@ -6,6 +6,11 @@ var streams: Dictionary = {}
 var music: AudioStreamPlayer
 
 func _ready() -> void:
+	# The headless CI validation has no real audio device. Avoid creating playback
+	# resources there so Godot can shut down without AudioStream resource leaks.
+	if DisplayServer.get_name() == "headless":
+		return
+
 	for role in ["match","slide","combo","bonus","celebration","win","lose","countdown"]:
 		var p := AudioStreamPlayer.new()
 		p.bus = "Master"

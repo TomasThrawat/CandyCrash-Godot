@@ -6,6 +6,11 @@ var streams: Dictionary = {}
 var music: AudioStreamPlayer
 
 func _ready() -> void:
+	# The headless CI validation has no real audio device. Avoid creating playback
+	# resources there so Godot can shut down without AudioStream resource leaks.
+	if DisplayServer.get_name() == "headless":
+		return
+
 	for role in ["match","slide","combo","bonus","celebration","win","lose","countdown"]:
 		var p := AudioStreamPlayer.new()
 		p.bus = "Master"
@@ -21,6 +26,20 @@ func _ready() -> void:
 		if music.stream is AudioStreamWAV:
 			music.stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
 		music.play()
+
+func _exit_tree() -> void:
+	# Stop playback and release stream references before Godot's final Resource/ObjectDB cleanup.
+	if music and is_instance_valid(music):
+		music.stop()
+		music.stream = null
+	for role in players:
+		var p: AudioStreamPlayer = players[role]
+		if is_instance_valid(p):
+			p.stop()
+			p.stream = null
+	players.clear()
+	streams.clear()
+	music = null
 
 func load_streams() -> void:
 	var roles := {

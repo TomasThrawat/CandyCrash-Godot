@@ -15,6 +15,8 @@ var board: Array = []
 var visuals: Array = []
 var selected := Vector2i(-1, -1)
 var moving := false
+var swipe_start := Vector2.ZERO
+var tracking_swipe := false
 var score := 0
 var moves_left := 0
 var combo := 0
@@ -148,28 +150,55 @@ func _cell_at(p: Vector2) -> Vector2i:
 func _unhandled_input(event: InputEvent) -> void:
     if moving:
         return
-    if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-        _select_or_swap(to_local(get_viewport().get_mouse_position()))
-    elif event is InputEventScreenTouch and event.pressed:
-        _select_or_swap(to_local(event.position))
+    if event is InputEventScreenTouch:
+        if event.pressed:
+            _begin_swipe(event.position)
+        elif tracking_swipe:
+            _finish_swipe(event.position)
+    elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+        if event.pressed:
+            _begin_swipe(event.position)
+        elif tracking_swipe:
+            _finish_swipe(event.position)
 
-func _select_or_swap(pos: Vector2) -> void:
-    var c := _cell_at(pos)
+func _begin_swipe(viewport_pos: Vector2) -> void:
+    var local_pos := to_local(viewport_pos)
+    var c := _cell_at(local_pos)
     if c.x < 0 or c.x >= SIZE or c.y < 0 or c.y >= SIZE:
+        tracking_swipe = false
         return
     if bool(board[c.y][c.x].blocker):
         _pulse(c)
+        tracking_swipe = false
         return
-    if selected.x < 0:
-        selected = c
-        _pulse(c)
+    swipe_start = local_pos
+    tracking_swipe = true
+
+func _finish_swipe(viewport_pos: Vector2) -> void:
+    if not tracking_swipe:
         return
-    if _adjacent(selected, c):
-        _attempt_swap(selected, c)
-        selected = Vector2i(-1,-1)
+    tracking_swipe = false
+    var end_pos := to_local(viewport_pos)
+    var delta := end_pos - swipe_start
+    if delta.length() < TILE * 0.28:
+        return
+
+    var start_cell := _cell_at(swipe_start)
+    var target_cell := start_cell
+    if abs(delta.x) > abs(delta.y):
+        target_cell.x += 1 if delta.x > 0 else -1
     else:
-        selected = c
-        _pulse(c)
+        target_cell.y += 1 if delta.y > 0 else -1
+
+    if not _inside(start_cell) or not _inside(target_cell):
+        return
+    if bool(board[start_cell.y][start_cell.x].blocker):
+        return
+    if bool(board[target_cell.y][target_cell.x].blocker):
+        _pulse(start_cell)
+        return
+
+    _attempt_swap(start_cell, target_cell)
 
 func _adjacent(a: Vector2i, b: Vector2i) -> bool:
     return abs(a.x-b.x) + abs(a.y-b.y) == 1

@@ -11,6 +11,9 @@ const ACCENT := Color("#FF6E9B")
 var audio: AudioManager
 var board: GameBoard
 var root_ui: Control
+var ui_center: CenterContainer
+var ui_stack: VBoxContainer
+var board_host: Control
 var hud: Dictionary = {}
 var overlay: Control
 var current_level := 1
@@ -247,7 +250,7 @@ func _show_game() -> void:
     var footer := PanelContainer.new()
     footer.custom_minimum_size = Vector2(640, 64)
     footer.add_theme_stylebox_override("panel", _box(Color("#14102F"), 20))
-    var hint := _label("Tap neighboring candies to swap • Build chains for bigger scores", 14, MUTED)
+    var hint := _label("Swipe a candy toward a neighbor • Build chains for bigger scores", 14, MUTED)
     hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
     hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

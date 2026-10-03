@@ -7,7 +7,7 @@ signal stats_changed(stats: Dictionary)
 
 const SIZE := 8
 const TILE := 72.0
-const ORIGIN := Vector2(72, 278)
+const ORIGIN := Vector2(24, 24)
 const KIND_COUNT := 6
 
 var level: Dictionary
@@ -149,9 +149,9 @@ func _unhandled_input(event: InputEvent) -> void:
     if moving:
         return
     if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-        _select_or_swap(get_viewport().get_mouse_position())
+        _select_or_swap(to_local(get_viewport().get_mouse_position()))
     elif event is InputEventScreenTouch and event.pressed:
-        _select_or_swap(event.position)
+        _select_or_swap(to_local(event.position))
 
 func _select_or_swap(pos: Vector2) -> void:
     var c := _cell_at(pos)
@@ -480,8 +480,8 @@ func _inside(c: Vector2i) -> bool:
     return c.x >= 0 and c.x < SIZE and c.y >= 0 and c.y < SIZE
 
 func _draw() -> void:
-    draw_rect(Rect2(48,254,624,624), Color("#17113D"), true)
-    draw_rect(Rect2(56,262,608,608), Color("#231C4E"), true)
+    draw_rect(Rect2(0,0,624,624), Color("#17113D"), true)
+    draw_rect(Rect2(8,8,608,608), Color("#231C4E"), true)
     for y in range(SIZE):
         for x in range(SIZE):
             var r := Rect2(ORIGIN + Vector2(x*TILE,y*TILE), Vector2(TILE,TILE)).grow(-5)

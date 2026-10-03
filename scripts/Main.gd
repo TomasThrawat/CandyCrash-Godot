@@ -1,145 +1,5 @@
 extends Node2D
 
-class SwipeLevelFeed extends ScrollContainer:
-    signal level_selected(id: int)
-    signal page_changed(id: int)
-
-    var content: VBoxContainer
-    var page_height := 720.0
-    var page_ids: Array[int] = []
-    var unlocked_through := 1
-    var start_index := 0
-    var touch_start := Vector2.ZERO
-    var tracking_touch := false
-    var snap_tween: Tween
-
-    func _ready() -> void:
-        gui_input.connect(_on_gui_input)
-
-    func setup(ids: Array[int], max_unlocked: int, initial_index: int) -> void:
-        page_ids = ids.duplicate()
-        unlocked_through = max_unlocked
-        start_index = clamp(initial_index, 0, max(0, page_ids.size() - 1))
-        content = VBoxContainer.new()
-        content.add_theme_constant_override("separation", 0)
-        add_child(content)
-        resized.connect(_reflow)
-        _build_pages()
-
-    func _build_pages() -> void:
-        for id in page_ids:
-            var page := Control.new()
-            page.custom_minimum_size = Vector2(0, page_height)
-            content.add_child(page)
-
-            var center := CenterContainer.new()
-            center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-            page.add_child(center)
-
-            var card := PanelContainer.new()
-            card.custom_minimum_size = Vector2(560, 500)
-            card.add_theme_stylebox_override("panel", _box(Color("#242053"), 30))
-            center.add_child(card)
-
-            var stack := VBoxContainer.new()
-            stack.alignment = BoxContainer.ALIGNMENT_CENTER
-            stack.add_theme_constant_override("separation", 14)
-            stack.custom_minimum_size = Vector2(500, 450)
-            card.add_child(stack)
-
-            var eyebrow := _label("LEVEL %02d" % id, 15, MUTED)
-            eyebrow.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-            stack.add_child(eyebrow)
-
-            var unlocked := id <= unlocked_through
-            var title := _label("CANDY CRASH" if unlocked else "LOCKED LEVEL", 34, TEXT)
-            title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-            stack.add_child(title)
-
-            var desc := _label(
-                "Ready to play" if unlocked else "Finish the previous level to unlock this one",
-                16,
-                MUTED
-            )
-            desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-            desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-            desc.custom_minimum_size = Vector2(460, 52)
-            stack.add_child(desc)
-
-            var progress := _label("%d / 36 LEVELS" % id, 20, TEXT)
-            progress.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-            stack.add_child(progress)
-
-            var action := _button("PLAY LEVEL %02d" % id, 330, 68, 18)
-            action.disabled = not unlocked
-            action.pressed.connect(level_selected.emit.bind(id))
-            stack.add_child(_center(action))
-
-            var hint := _label("↑ swipe up    •    ↓ swipe down", 14, Color("#8F88B9"))
-            hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-            stack.add_child(hint)
-
-        call_deferred("_reflow")
-        call_deferred("_snap_to", start_index)
-
-    func _reflow() -> void:
-        page_height = max(size.y, 560.0)
-        if not content:
-            return
-        for page in content.get_children():
-            page.custom_minimum_size.y = page_height
-
-    func _on_gui_input(event: InputEvent) -> void:
-        if event is InputEventScreenTouch:
-            if event.pressed:
-                tracking_touch = true
-                touch_start = event.position
-            elif tracking_touch:
-                tracking_touch = false
-                call_deferred("_snap_from_gesture", event.position)
-        elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
-            if event.pressed:
-                tracking_touch = true
-                touch_start = event.position
-            elif tracking_touch:
-                tracking_touch = false
-                call_deferred("_snap_from_gesture", event.position)
-
-    func _snap_from_gesture(end_pos: Vector2) -> void:
-        if page_ids.is_empty():
-            return
-        var dy := end_pos.y - touch_start.y
-        var index := int(round(scroll_vertical / max(page_height, 1.0)))
-        if abs(dy) >= 55.0:
-            index += 1 if dy < 0 else -1
-        index = clamp(index, 0, page_ids.size() - 1)
-        _snap_to(index)
-
-    func _snap_to(index: int) -> void:
-        if page_ids.is_empty():
-            return
-        var target := float(index) * page_height
-        if snap_tween:
-            snap_tween.kill()
-        snap_tween = create_tween()
-        snap_tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-        snap_tween.tween_property(self, "scroll_vertical", target, 0.22)
-        page_changed.emit(page_ids[index])
-
-    static func _box(color: Color, radius: int) -> StyleBoxFlat:
-        var s := StyleBoxFlat.new()
-        s.bg_color = color
-        s.corner_radius_top_left = radius
-        s.corner_radius_top_right = radius
-        s.corner_radius_bottom_left = radius
-        s.corner_radius_bottom_right = radius
-        s.border_width_left = 1
-        s.border_width_top = 1
-        s.border_width_right = 1
-        s.border_width_bottom = 1
-        s.border_color = Color(1,1,1,0.08)
-        return s
-
 const SCREEN_SIZE := Vector2(720, 1280)
 const GAME_BG := Color("#09061C")
 const PANEL := Color("#171137")
@@ -242,30 +102,53 @@ func _show_map() -> void:
     progress_box.custom_minimum_size = Vector2(220, 76)
     journey_row.add_child(progress_box)
     progress_box.add_child(_label("YOUR JOURNEY", 11, MUTED))
-    progress_box.add_child(_label("%d / 36 LEVELS" % max_unlocked, 20, TEXT))
+    var progress_value := _label("%d / 36 LEVELS" % max_unlocked, 20, TEXT)
+    progress_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    progress_box.add_child(progress_value)
 
     var settings_btn := _button("SETTINGS", 130, 52, 14)
     settings_btn.pressed.connect(_show_settings)
     journey_row.add_child(settings_btn)
     stack.add_child(_center(journey))
 
-    var feed := SwipeLevelFeed.new()
-    feed.custom_minimum_size = Vector2(640, 720)
-    var ids: Array[int] = []
+    var scroll := ScrollContainer.new()
+    scroll.custom_minimum_size = Vector2(640, 720)
+    scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+
+    var grid := GridContainer.new()
+    grid.columns = 3
+    grid.add_theme_constant_override("h_separation", 16)
+    grid.add_theme_constant_override("v_separation", 16)
+    grid.custom_minimum_size = Vector2(624, 0)
+    scroll.add_child(grid)
+
     for i in range(1, 37):
-        ids.append(i)
-    feed.setup(ids, max_unlocked, max_unlocked - 1)
-    feed.level_selected.connect(_start_level)
-    stack.add_child(_center(feed, Vector2(640, 720)))
+        var button := _button("%02d" % i, 192, 122, 23)
+        button.disabled = i > max_unlocked
+        if i <= max_unlocked:
+            var count := int(stars.get(str(i), 0))
+            button.text = "%02d
+%s" % [i, "★".repeat(count) if count > 0 else "•"]
+            button.pressed.connect(_start_level.bind(i))
+            button.add_theme_stylebox_override("normal", _box(PANEL_2, 20))
+            button.add_theme_stylebox_override("hover", _box(Color("#3D347D"), 20))
+            button.add_theme_stylebox_override("pressed", _box(ACCENT.darkened(0.28), 20))
+        else:
+            button.text = "LOCKED
+%02d" % i
+            button.modulate = Color(0.50, 0.50, 0.62)
+        grid.add_child(button)
+
+    stack.add_child(_center(scroll, Vector2(640, 720)))
 
     var footer := PanelContainer.new()
     footer.custom_minimum_size = Vector2(640, 58)
     footer.add_theme_stylebox_override("panel", _box(Color("#14102F"), 20))
-    var footer_text := _label("Swipe up/down to move between levels", 14, MUTED)
+    var footer_text := _label("Select a level to play", 14, MUTED)
     footer_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     footer.add_child(footer_text)
     stack.add_child(_center(footer))
-
 func _start_level(id: int) -> void:
     current_level = id
     _show_game()

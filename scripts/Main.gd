@@ -1,5 +1,145 @@
 extends Node2D
 
+class SwipeLevelFeed extends ScrollContainer:
+    signal level_selected(id: int)
+    signal page_changed(id: int)
+
+    var content: VBoxContainer
+    var page_height := 720.0
+    var page_ids: Array[int] = []
+    var unlocked_through := 1
+    var start_index := 0
+    var touch_start := Vector2.ZERO
+    var tracking_touch := false
+    var snap_tween: Tween
+
+    func _ready() -> void:
+        gui_input.connect(_on_gui_input)
+
+    func setup(ids: Array[int], max_unlocked: int, initial_index: int) -> void:
+        page_ids = ids.duplicate()
+        unlocked_through = max_unlocked
+        start_index = clamp(initial_index, 0, max(0, page_ids.size() - 1))
+        content = VBoxContainer.new()
+        content.add_theme_constant_override("separation", 0)
+        add_child(content)
+        resized.connect(_reflow)
+        _build_pages()
+
+    func _build_pages() -> void:
+        for id in page_ids:
+            var page := Control.new()
+            page.custom_minimum_size = Vector2(0, page_height)
+            content.add_child(page)
+
+            var center := CenterContainer.new()
+            center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+            page.add_child(center)
+
+            var card := PanelContainer.new()
+            card.custom_minimum_size = Vector2(560, 500)
+            card.add_theme_stylebox_override("panel", _box(Color("#242053"), 30))
+            center.add_child(card)
+
+            var stack := VBoxContainer.new()
+            stack.alignment = BoxContainer.ALIGNMENT_CENTER
+            stack.add_theme_constant_override("separation", 14)
+            stack.custom_minimum_size = Vector2(500, 450)
+            card.add_child(stack)
+
+            var eyebrow := _label("LEVEL %02d" % id, 15, MUTED)
+            eyebrow.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+            stack.add_child(eyebrow)
+
+            var unlocked := id <= unlocked_through
+            var title := _label("CANDY CRASH" if unlocked else "LOCKED LEVEL", 34, TEXT)
+            title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+            stack.add_child(title)
+
+            var desc := _label(
+                "Ready to play" if unlocked else "Finish the previous level to unlock this one",
+                16,
+                MUTED
+            )
+            desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+            desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+            desc.custom_minimum_size = Vector2(460, 52)
+            stack.add_child(desc)
+
+            var progress := _label("%d / 36 LEVELS" % id, 20, TEXT)
+            progress.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+            stack.add_child(progress)
+
+            var action := _button("PLAY LEVEL %02d" % id, 330, 68, 18)
+            action.disabled = not unlocked
+            action.pressed.connect(level_selected.emit.bind(id))
+            stack.add_child(_center(action))
+
+            var hint := _label("↑ swipe up    •    ↓ swipe down", 14, Color("#8F88B9"))
+            hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+            stack.add_child(hint)
+
+        call_deferred("_reflow")
+        call_deferred("_snap_to", start_index)
+
+    func _reflow() -> void:
+        page_height = max(size.y, 560.0)
+        if not content:
+            return
+        for page in content.get_children():
+            page.custom_minimum_size.y = page_height
+
+    func _on_gui_input(event: InputEvent) -> void:
+        if event is InputEventScreenTouch:
+            if event.pressed:
+                tracking_touch = true
+                touch_start = event.position
+            elif tracking_touch:
+                tracking_touch = false
+                call_deferred("_snap_from_gesture", event.position)
+        elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+            if event.pressed:
+                tracking_touch = true
+                touch_start = event.position
+            elif tracking_touch:
+                tracking_touch = false
+                call_deferred("_snap_from_gesture", event.position)
+
+    func _snap_from_gesture(end_pos: Vector2) -> void:
+        if page_ids.is_empty():
+            return
+        var dy := end_pos.y - touch_start.y
+        var index := int(round(scroll_vertical / max(page_height, 1.0)))
+        if abs(dy) >= 55.0:
+            index += 1 if dy < 0 else -1
+        index = clamp(index, 0, page_ids.size() - 1)
+        _snap_to(index)
+
+    func _snap_to(index: int) -> void:
+        if page_ids.is_empty():
+            return
+        var target := float(index) * page_height
+        if snap_tween:
+            snap_tween.kill()
+        snap_tween = create_tween()
+        snap_tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+        snap_tween.tween_property(self, "scroll_vertical", target, 0.22)
+        page_changed.emit(page_ids[index])
+
+    static func _box(color: Color, radius: int) -> StyleBoxFlat:
+        var s := StyleBoxFlat.new()
+        s.bg_color = color
+        s.corner_radius_top_left = radius
+        s.corner_radius_top_right = radius
+        s.corner_radius_bottom_left = radius
+        s.corner_radius_bottom_right = radius
+        s.border_width_left = 1
+        s.border_width_top = 1
+        s.border_width_right = 1
+        s.border_width_bottom = 1
+        s.border_color = Color(1,1,1,0.08)
+        return s
+
 const SCREEN_SIZE := Vector2(720, 1280)
 const GAME_BG := Color("#09061C")
 const PANEL := Color("#171137")
@@ -45,81 +185,86 @@ func _clear_ui() -> void:
     hud.clear()
     overlay = null
 
+func _make_shell() -> VBoxContainer:
+    ui_center = CenterContainer.new()
+    ui_center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    root_ui.add_child(ui_center)
+
+    ui_stack = VBoxContainer.new()
+    ui_stack.alignment = BoxContainer.ALIGNMENT_CENTER
+    ui_stack.add_theme_constant_override("separation", 14)
+    ui_stack.custom_minimum_size = Vector2(664, 0)
+    ui_center.add_child(ui_stack)
+    return ui_stack
+
+func _center(child: Control, min_size := Vector2.ZERO) -> CenterContainer:
+    var wrap := CenterContainer.new()
+    if min_size != Vector2.ZERO:
+        wrap.custom_minimum_size = min_size
+    wrap.add_child(child)
+    return wrap
+
 func _show_map() -> void:
     if board and is_instance_valid(board):
         board.queue_free()
         board = null
     _clear_ui()
 
+    var stack := _make_shell()
+
     var title := _label("CANDY CRASH", 42, TEXT)
-    title.position = Vector2(0, 52)
-    title.size = Vector2(720, 60)
     title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    root_ui.add_child(title)
+    stack.add_child(_center(title, Vector2(664, 56)))
 
     var sub := _label("Sweet matches • bigger combos", 17, MUTED)
-    sub.position = Vector2(0, 112)
-    sub.size = Vector2(720, 30)
     sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    root_ui.add_child(sub)
+    stack.add_child(_center(sub, Vector2(664, 28)))
 
-    var journey := Panel.new()
-    journey.position = Vector2(40, 160)
-    journey.size = Vector2(640, 114)
+    var journey := PanelContainer.new()
+    journey.custom_minimum_size = Vector2(640, 108)
     journey.add_theme_stylebox_override("panel", _box(PANEL, 24))
-    root_ui.add_child(journey)
+    var journey_row := HBoxContainer.new()
+    journey_row.alignment = BoxContainer.ALIGNMENT_CENTER
+    journey_row.add_theme_constant_override("separation", 14)
+    journey.add_child(journey_row)
 
-    var level_caption := _label("UNLOCKED", 11, MUTED)
-    level_caption.position = Vector2(24, 16)
-    level_caption.size = Vector2(120, 20)
-    journey.add_child(level_caption)
-
+    var unlocked_box := VBoxContainer.new()
+    unlocked_box.alignment = BoxContainer.ALIGNMENT_CENTER
+    unlocked_box.custom_minimum_size = Vector2(120, 76)
+    journey_row.add_child(unlocked_box)
+    unlocked_box.add_child(_label("UNLOCKED", 11, MUTED))
     var level_value := _label(str(max_unlocked), 34, TEXT)
-    level_value.position = Vector2(24, 40)
-    level_value.size = Vector2(120, 46)
-    journey.add_child(level_value)
+    level_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    unlocked_box.add_child(level_value)
 
-    var progress_caption := _label("YOUR JOURNEY", 11, MUTED)
-    progress_caption.position = Vector2(188, 16)
-    progress_caption.size = Vector2(160, 20)
-    journey.add_child(progress_caption)
-
-    var progress_value := _label("%d / 36 LEVELS" % max_unlocked, 20, TEXT)
-    progress_value.position = Vector2(188, 42)
-    progress_value.size = Vector2(220, 34)
-    journey.add_child(progress_value)
+    var progress_box := VBoxContainer.new()
+    progress_box.alignment = BoxContainer.ALIGNMENT_CENTER
+    progress_box.custom_minimum_size = Vector2(220, 76)
+    journey_row.add_child(progress_box)
+    progress_box.add_child(_label("YOUR JOURNEY", 11, MUTED))
+    progress_box.add_child(_label("%d / 36 LEVELS" % max_unlocked, 20, TEXT))
 
     var settings_btn := _button("SETTINGS", 130, 52, 14)
-    settings_btn.position = Vector2(486, 31)
     settings_btn.pressed.connect(_show_settings)
-    journey.add_child(settings_btn)
+    journey_row.add_child(settings_btn)
+    stack.add_child(_center(journey))
 
-    var scroll := ScrollContainer.new()
-    scroll.position = Vector2(40, 300)
-    scroll.size = Vector2(640, 884)
-    root_ui.add_child(scroll)
-
-    var grid := GridContainer.new()
-    grid.columns = 3
-    grid.add_theme_constant_override("h_separation", 16)
-    grid.add_theme_constant_override("v_separation", 16)
-    grid.custom_minimum_size = Vector2(620, 0)
-    scroll.add_child(grid)
-
+    var feed := SwipeLevelFeed.new()
+    feed.custom_minimum_size = Vector2(640, 720)
+    var ids: Array[int] = []
     for i in range(1, 37):
-        var button := _button("%02d" % i, 192, 122, 23)
-        button.disabled = i > max_unlocked
-        if i <= max_unlocked:
-            var count := int(stars.get(str(i), 0))
-            button.text = "%02d\n%s" % [i, "★".repeat(count) if count > 0 else "•"]
-            button.pressed.connect(_start_level.bind(i))
-            button.add_theme_stylebox_override("normal", _box(PANEL_2, 20))
-            button.add_theme_stylebox_override("hover", _box(Color("#3D347D"), 20))
-            button.add_theme_stylebox_override("pressed", _box(ACCENT.darkened(0.28), 20))
-        else:
-            button.text = "LOCKED\n%02d" % i
-            button.modulate = Color(0.50, 0.50, 0.62)
-        grid.add_child(button)
+        ids.append(i)
+    feed.setup(ids, max_unlocked, max_unlocked - 1)
+    feed.level_selected.connect(_start_level)
+    stack.add_child(_center(feed, Vector2(640, 720)))
+
+    var footer := PanelContainer.new()
+    footer.custom_minimum_size = Vector2(640, 58)
+    footer.add_theme_stylebox_override("panel", _box(Color("#14102F"), 20))
+    var footer_text := _label("Swipe up/down to move between levels", 14, MUTED)
+    footer_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    footer.add_child(footer_text)
+    stack.add_child(_center(footer))
 
 func _start_level(id: int) -> void:
     current_level = id
@@ -130,107 +275,119 @@ func _show_game() -> void:
         board.queue_free()
     _clear_ui()
 
+    var stack := _make_shell()
+    stack.add_theme_constant_override("separation", 14)
+
+    var header := HBoxContainer.new()
+    header.alignment = BoxContainer.ALIGNMENT_CENTER
+    header.add_theme_constant_override("separation", 10)
+    header.custom_minimum_size = Vector2(640, 70)
+
+    var back := _button("‹", 52, 56, 28)
+    back.pressed.connect(_back_to_map)
+    header.add_child(back)
+
+    var title_wrap := VBoxContainer.new()
+    title_wrap.alignment = BoxContainer.ALIGNMENT_CENTER
+    title_wrap.custom_minimum_size = Vector2(500, 64)
+    header.add_child(title_wrap)
+
     var level := LevelData.get_level(current_level)
+    var title := _label(level.name, 28, TEXT)
+    title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    title_wrap.add_child(title)
+    var subtitle := _label("Make sweet matches", 14, MUTED)
+    subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    title_wrap.add_child(subtitle)
+
+    var pause := _button("Ⅱ", 82, 56, 22)
+    pause.pressed.connect(_toggle_pause)
+    header.add_child(pause)
+    stack.add_child(_center(header, Vector2(640, 70)))
+
+    var hud_row := HBoxContainer.new()
+    hud_row.alignment = BoxContainer.ALIGNMENT_CENTER
+    hud_row.add_theme_constant_override("separation", 12)
+    var score_panel := _mini_panel("SCORE")
+    var moves_panel := _mini_panel("MOVES")
+    var goal_panel := _mini_panel("GOAL")
+    hud_row.add_child(score_panel)
+    hud_row.add_child(moves_panel)
+    hud_row.add_child(goal_panel)
+    stack.add_child(_center(hud_row, Vector2(640, 70)))
+    hud["score"] = score_panel.get_node("Value")
+    hud["moves"] = moves_panel.get_node("Value")
+    hud["goal"] = goal_panel.get_node("Value")
+
+    board_host = Control.new()
+    board_host.custom_minimum_size = Vector2(624, 624)
+    board_host.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    stack.add_child(_center(board_host, Vector2(624, 624)))
+
     board = GameBoard.new()
     board.position = Vector2.ZERO
-    add_child(board)
+    board_host.add_child(board)
     board.setup(level, audio)
     board.level_won.connect(_on_level_won)
     board.level_lost.connect(_on_level_lost)
     board.stats_changed.connect(_on_stats_changed)
 
-    var back := _button("‹", 42, 52, 28)
-    back.position = Vector2(42, 46)
-    back.pressed.connect(_back_to_map)
-    root_ui.add_child(back)
-
-    var title := _label(level.name, 28, TEXT)
-    title.position = Vector2(104, 42)
-    title.size = Vector2(360, 40)
-    root_ui.add_child(title)
-
-    var subtitle := _label("Make sweet matches", 14, MUTED)
-    subtitle.position = Vector2(104, 74)
-    subtitle.size = Vector2(300, 24)
-    root_ui.add_child(subtitle)
-
-    var pause := _button("Ⅱ", 82, 52, 22)
-    pause.position = Vector2(584, 46)
-    pause.pressed.connect(_toggle_pause)
-    root_ui.add_child(pause)
-
-    var score_panel := _mini_panel("SCORE", 44, 157, 196, 66)
-    root_ui.add_child(score_panel)
-    hud["score"] = score_panel.get_node("Value")
-
-    var moves_panel := _mini_panel("MOVES", 262, 157, 196, 66)
-    root_ui.add_child(moves_panel)
-    hud["moves"] = moves_panel.get_node("Value")
-
-    var goal_panel := _mini_panel("GOAL", 480, 157, 196, 66)
-    root_ui.add_child(goal_panel)
-    hud["goal"] = goal_panel.get_node("Value")
-
-    var booster_panel := Panel.new()
-    booster_panel.position = Vector2(40, 900)
-    booster_panel.size = Vector2(640, 164)
-    booster_panel.add_theme_stylebox_override("panel", _box(Color("#18133A"), 26))
-    root_ui.add_child(booster_panel)
-
+    var booster_panel := PanelContainer.new()
+    booster_panel.custom_minimum_size = Vector2(640, 148)
+    booster_panel.add_theme_stylebox_override("panel", _box(Color("#18133A"), 24))
+    var booster_stack := VBoxContainer.new()
+    booster_stack.alignment = BoxContainer.ALIGNMENT_CENTER
+    booster_stack.add_theme_constant_override("separation", 8)
+    booster_panel.add_child(booster_stack)
     var booster_title := _label("BOOSTERS", 12, MUTED)
-    booster_title.position = Vector2(18, 14)
-    booster_title.size = Vector2(140, 22)
-    booster_panel.add_child(booster_title)
+    booster_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    booster_stack.add_child(booster_title)
 
-    var b1 := _button("HAMMER\n×3", 140, 92, 15)
-    b1.position = Vector2(16, 49)
+    var boosters := HBoxContainer.new()
+    boosters.alignment = BoxContainer.ALIGNMENT_CENTER
+    boosters.add_theme_constant_override("separation", 8)
+    booster_stack.add_child(boosters)
+    var b1 := _button("HAMMER\n×3", 140, 86, 15)
     b1.pressed.connect(_use_hammer)
-    booster_panel.add_child(b1)
-
-    var b2 := _button("SHUFFLE\n×2", 140, 92, 15)
-    b2.position = Vector2(168, 49)
+    boosters.add_child(b1)
+    var b2 := _button("SHUFFLE\n×2", 140, 86, 15)
     b2.pressed.connect(_use_shuffle)
-    booster_panel.add_child(b2)
-
-    var b3 := _button("COLOR BOMB\n×1", 160, 92, 15)
-    b3.position = Vector2(320, 49)
+    boosters.add_child(b2)
+    var b3 := _button("COLOR BOMB\n×1", 160, 86, 15)
     b3.pressed.connect(_use_color_bomb)
-    booster_panel.add_child(b3)
-
-    var b4 := _button("EXTRA MOVE\n+5", 132, 92, 14)
-    b4.position = Vector2(492, 49)
+    boosters.add_child(b3)
+    var b4 := _button("EXTRA MOVE\n+5", 132, 86, 14)
     b4.pressed.connect(_use_extra_move)
-    booster_panel.add_child(b4)
+    boosters.add_child(b4)
+    stack.add_child(_center(booster_panel))
 
-    var footer := Panel.new()
-    footer.position = Vector2(40, 1082)
-    footer.size = Vector2(640, 76)
-    footer.add_theme_stylebox_override("panel", _box(Color("#14102F"), 22))
-    root_ui.add_child(footer)
-
-    var hint := _label("Tap two neighboring candies to swap • Build chains for bigger scores", 14, MUTED)
-    hint.position = Vector2(16, 20)
-    hint.size = Vector2(608, 36)
+    var footer := PanelContainer.new()
+    footer.custom_minimum_size = Vector2(640, 64)
+    footer.add_theme_stylebox_override("panel", _box(Color("#14102F"), 20))
+    var hint := _label("Tap neighboring candies to swap • Build chains for bigger scores", 14, MUTED)
     hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+    hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     footer.add_child(hint)
+    stack.add_child(_center(footer))
 
     _update_goal(level)
     _update_stats(board.get_stats())
 
-func _mini_panel(caption: String, x: float, y: float, w: float, h: float) -> Panel:
-    var p := Panel.new()
-    p.position = Vector2(x, y)
-    p.size = Vector2(w, h)
+func _mini_panel(caption: String) -> PanelContainer:
+    var p := PanelContainer.new()
+    p.custom_minimum_size = Vector2(196, 70)
     p.add_theme_stylebox_override("panel", _box(Color("#2C245A"), 18))
+    var stack := VBoxContainer.new()
+    stack.alignment = BoxContainer.ALIGNMENT_CENTER
+    p.add_child(stack)
     var c := _label(caption, 11, MUTED)
-    c.position = Vector2(16, 8)
-    c.size = Vector2(w - 32, 18)
-    p.add_child(c)
+    c.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    stack.add_child(c)
     var v := _label("0", 20, TEXT)
     v.name = "Value"
-    v.position = Vector2(16, 27)
-    v.size = Vector2(w - 32, 32)
-    p.add_child(v)
+    v.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    stack.add_child(v)
     return p
 
 func _update_goal(level: Dictionary) -> void:
@@ -279,43 +436,40 @@ func _show_result(win: bool, stats: Dictionary, earned: int) -> void:
     overlay.color = Color("#05030E", 0.78)
     root_ui.add_child(overlay)
 
-    var card := Panel.new()
-    card.position = Vector2(55, 382)
-    card.size = Vector2(610, 510)
+    var center := CenterContainer.new()
+    center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    overlay.add_child(center)
+
+    var card := PanelContainer.new()
+    card.custom_minimum_size = Vector2(610, 510)
     card.add_theme_stylebox_override("panel", _box(Color("#29235E"), 30))
-    overlay.add_child(card)
+    center.add_child(card)
+
+    var stack := VBoxContainer.new()
+    stack.alignment = BoxContainer.ALIGNMENT_CENTER
+    stack.add_theme_constant_override("separation", 16)
+    stack.custom_minimum_size = Vector2(560, 450)
+    card.add_child(stack)
 
     var title := _label("LEVEL COMPLETE!" if win else "OUT OF MOVES", 32, TEXT)
-    title.position = Vector2(20, 35)
-    title.size = Vector2(570, 52)
     title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    card.add_child(title)
+    stack.add_child(title)
 
     var rating := _label("★".repeat(earned) if win else "TRY AGAIN", 44, Color("#FFE06B") if win else ACCENT)
-    rating.position = Vector2(20, 105)
-    rating.size = Vector2(570, 64)
     rating.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    card.add_child(rating)
+    stack.add_child(rating)
 
-    var result := _label(
-        "Score    %d\nCombo    %d\nMoves    %d" % [stats.score, stats.combo, stats.moves],
-        21,
-        TEXT
-    )
-    result.position = Vector2(30, 198)
-    result.size = Vector2(550, 116)
+    var result := _label("Score    %d\nCombo    %d\nMoves    %d" % [stats.score, stats.combo, stats.moves], 21, TEXT)
     result.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    card.add_child(result)
+    stack.add_child(result)
 
     var main_action := _button("NEXT LEVEL" if win else "RETRY", 250, 62, 19)
-    main_action.position = Vector2(180, 346)
     main_action.pressed.connect(_next_level if win else _retry_level)
-    card.add_child(main_action)
+    stack.add_child(_center(main_action))
 
     var map_action := _button("LEVEL MAP", 250, 54, 16)
-    map_action.position = Vector2(180, 425)
     map_action.pressed.connect(_back_to_map)
-    card.add_child(map_action)
+    stack.add_child(_center(map_action))
 
 func _next_level() -> void:
     if current_level < 36:
@@ -345,39 +499,45 @@ func _toggle_pause() -> void:
     overlay.color = Color("#05030E", 0.74)
     root_ui.add_child(overlay)
 
-    var card := Panel.new()
+    var center := CenterContainer.new()
+    center.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
+    center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    overlay.add_child(center)
+
+    var card := PanelContainer.new()
     card.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
-    card.position = Vector2(70, 430)
-    card.size = Vector2(580, 400)
+    card.custom_minimum_size = Vector2(580, 400)
     card.add_theme_stylebox_override("panel", _box(Color("#29235E"), 28))
-    overlay.add_child(card)
+    center.add_child(card)
+
+    var stack := VBoxContainer.new()
+    stack.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
+    stack.alignment = BoxContainer.ALIGNMENT_CENTER
+    stack.add_theme_constant_override("separation", 18)
+    stack.custom_minimum_size = Vector2(520, 330)
+    card.add_child(stack)
 
     var t := _label("PAUSED", 34, TEXT)
-    t.position = Vector2(20, 35)
-    t.size = Vector2(540, 55)
     t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    card.add_child(t)
+    stack.add_child(t)
 
     var resume := _button("RESUME", 240, 60, 19)
     resume.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
-    resume.position = Vector2(170, 125)
     resume.pressed.connect(_toggle_pause)
-    card.add_child(resume)
+    stack.add_child(_center(resume))
 
     var settings := _button("SETTINGS", 240, 56, 17)
     settings.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
-    settings.position = Vector2(170, 205)
     settings.pressed.connect(_show_settings)
-    card.add_child(settings)
+    stack.add_child(_center(settings))
 
     var exit := _button("LEVEL MAP", 240, 56, 17)
     exit.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
-    exit.position = Vector2(170, 278)
     exit.pressed.connect(func():
         get_tree().paused = false
         _back_to_map()
     )
-    card.add_child(exit)
+    stack.add_child(_center(exit))
 
 func _show_settings() -> void:
     get_tree().paused = false
@@ -385,46 +545,54 @@ func _show_settings() -> void:
         overlay.queue_free()
         overlay = null
 
-    var panel := Panel.new()
-    panel.position = Vector2(60, 320)
-    panel.size = Vector2(600, 590)
+    var overlay_root := ColorRect.new()
+    overlay_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    overlay_root.color = Color("#05030E", 0.70)
+    root_ui.add_child(overlay_root)
+
+    var center := CenterContainer.new()
+    center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    overlay_root.add_child(center)
+
+    var panel := PanelContainer.new()
+    panel.custom_minimum_size = Vector2(600, 590)
     panel.add_theme_stylebox_override("panel", _box(Color("#29235E"), 28))
-    root_ui.add_child(panel)
+    center.add_child(panel)
+
+    var stack := VBoxContainer.new()
+    stack.alignment = BoxContainer.ALIGNMENT_CENTER
+    stack.add_theme_constant_override("separation", 18)
+    stack.custom_minimum_size = Vector2(540, 520)
+    panel.add_child(stack)
 
     var title := _label("SETTINGS", 30, TEXT)
-    title.position = Vector2(20, 30)
-    title.size = Vector2(560, 55)
     title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    panel.add_child(title)
+    stack.add_child(title)
 
     var sound := _button("SOUND: " + ("ON" if settings.sound else "OFF"), 360, 64, 18)
-    sound.position = Vector2(120, 125)
     sound.pressed.connect(func():
         settings.sound = not settings.sound
         AudioServer.set_bus_mute(0, not settings.sound)
         sound.text = "SOUND: " + ("ON" if settings.sound else "OFF")
         _save()
     )
-    panel.add_child(sound)
+    stack.add_child(_center(sound))
 
     var haptic := _button("HAPTICS HOOK: " + ("ON" if settings.haptics else "OFF"), 360, 64, 18)
-    haptic.position = Vector2(120, 205)
     haptic.pressed.connect(func():
         settings.haptics = not settings.haptics
         haptic.text = "HAPTICS HOOK: " + ("ON" if settings.haptics else "OFF")
         _save()
     )
-    panel.add_child(haptic)
+    stack.add_child(_center(haptic))
 
     var reset := _button("RESET PROGRESS", 360, 64, 18)
-    reset.position = Vector2(120, 285)
     reset.pressed.connect(_reset_progress)
-    panel.add_child(reset)
+    stack.add_child(_center(reset))
 
     var close := _button("CLOSE", 220, 58, 17)
-    close.position = Vector2(190, 395)
-    close.pressed.connect(func(): panel.queue_free())
-    panel.add_child(close)
+    close.pressed.connect(overlay_root.queue_free)
+    stack.add_child(_center(close))
 
 func _reset_progress() -> void:
     max_unlocked = 1
